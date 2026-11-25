@@ -1,0 +1,35 @@
+library(readxl)
+library(boot)
+
+datos <- read_excel("ahoraisimportantedatos.xlsx")
+cat("Casos:", nrow(datos), "\n")          # debe dar 85
+print(summary(datos$AM))                   # el mínimo debe ser >= 1
+
+modelo <- lm(DEPENDIENTE ~ ET + FI + CR + SC + AM, data = datos)
+print(summary(modelo))                     # R-squared debe dar 0.592
+
+fun <- function(d, i) {
+  b <- coef(lm(DEPENDIENTE ~ ET + FI + CR + SC + AM, data = d[i, ]))
+  c(b,
+    b["ET"]-b["FI"], b["ET"]-b["CR"], b["ET"]-b["SC"], b["ET"]-b["AM"],
+    b["FI"]-b["CR"], b["FI"]-b["SC"], b["FI"]-b["AM"],
+    b["CR"]-b["SC"], b["CR"]-b["AM"], b["SC"]-b["AM"])
+}
+set.seed(123)
+res <- boot(datos, fun, R = 5000)
+
+tabla <- data.frame(
+  Variable = c("Constante","Elementos tangibles","Fiabilidad","Capacidad de respuesta","Seguridad","Empatía",
+               "Tangibles − Fiabilidad","Tangibles − Capacidad de respuesta","Tangibles − Seguridad","Tangibles − Empatía",
+               "Fiabilidad − Capacidad de respuesta","Fiabilidad − Seguridad","Fiabilidad − Empatía",
+               "Capacidad de respuesta − Seguridad","Capacidad de respuesta − Empatía","Seguridad − Empatía"),
+  B = res$t0,
+  `Error estándar`   = apply(res$t, 2, sd),
+  `IC 95 % inferior` = apply(res$t, 2, quantile, 0.025),
+  `IC 95 % superior` = apply(res$t, 2, quantile, 0.975),
+  check.names = FALSE)
+tabla$Significativo <- ifelse(tabla$`IC 95 % inferior` > 0 | tabla$`IC 95 % superior` < 0, "Sí", "No")
+mostrar <- tabla
+mostrar[, 2:5] <- lapply(tabla[, 2:5], function(x) format(round(x, 3), decimal.mark = ","))
+print(mostrar, row.names = FALSE)
+write.csv2(mostrar, "tabla_bootstrap.csv", row.names = FALSE)
